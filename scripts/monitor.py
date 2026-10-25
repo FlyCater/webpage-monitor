@@ -1,67 +1,3 @@
-#!/usr/bin/env python3
-"""Monitor Comic World announcement pages without disclosing configuration in logs.
-
-State file holds only HMAC identifiers, NOT convention numbers or webhook URLs.
-"""
-import hashlib
-import hmac
-from html.parser import HTMLParser
-import json
-import os
-from pathlib import Path
-import re
-import sys
-import time
-from urllib.error import HTTPError, URLError
-from urllib.request import Request, urlopen
-
-STATE_PATH = Path('.state/notified.txt')
-PENDING_MARKERS = ('공지 준비중입니다', '현재 공지 내용을 준비중에 있습니다')
-
-
-class ContentParser(HTMLParser):
-    def __init__(self):
-        super().__init__(convert_charrefs=True)
-        self.skip = 0
-        self.in_heading = 0
-        self.heading_parts = []
-        self.headings = []
-        self.text_parts = []
-
-    def handle_starttag(self, tag, attrs):
-        if tag in ('script', 'style', 'noscript'):
-            self.skip += 1
-        if tag in ('h1', 'h2', 'h3'):
-            self.in_heading += 1
-            self.heading_parts = []
-
-    def handle_endtag(self, tag):
-        if tag in ('h1', 'h2', 'h3'):
-            if self.in_heading:
-                self.headings.append(' '.join(self.heading_parts))
-                self.in_heading -= 1
-        if tag in ('script', 'style', 'noscript') and self.skip:
-            self.skip -= 1
-
-    def handle_data(self, data):
-        if not self.skip:
-            stripped = ' '.join(data.split())
-            if stripped:
-                self.text_parts.append(stripped)
-                if self.in_heading:
-                    self.heading_parts.append(stripped)
-
-
-def classify(html, number):
-    doc = ContentParser()
-    doc.feed(html)
-    whole = ' '.join(doc.text_parts)
-    if any(marker in whole for marker in PENDING_MARKERS):
-        return 'pending'
-    # Page-specific convention title: do not mistake global navigation for a published announcement.
-    target = re.compile(r'(?<!\d)' + re.escape(number) + r'(?!\d)')
-    if any('코믹월드' in heading and target.search(heading) for heading in doc.headings):
-        return 'open'
     return 'unknown'
 
 
@@ -162,13 +98,11 @@ def main():
             try:
                 send_discord(webhook, number)
             except RuntimeError as exc:
-    print(f'Page check {index}: {exc}', file=sys.stderr)
-    errors = True
-    continue
-except (HTTPError, URLError, TimeoutError, UnicodeError, ValueError, OSError):
-    print(f'Page check {index}: Discord network or delivery error.', file=sys.stderr)
-    errors = True
-    continue
+                print(f'Page check {index}: {exc}', file=sys.stderr)
+                errors = True
+                continue
+            except (HTTPError, URLError, TimeoutError, UnicodeError, ValueError, OSError):
+                print(f'Page check {index}: Discord network or delivery error.', file=sys.stderr)
                 errors = True
                 continue
             notified.add(token)
