@@ -122,7 +122,7 @@ def send_discord(webhook, number):
                 delay = max(1, min(15, int(float(exc.headers.get('Retry-After', '2')))))
                 time.sleep(delay)
                 continue
-            raise RuntimeError('Discord notification unsuccessful') from None
+            raise RuntimeError(f'Discord HTTP {exc.code}') from None
         except (URLError, TimeoutError):
             if attempt < 2:
                 time.sleep(2)
