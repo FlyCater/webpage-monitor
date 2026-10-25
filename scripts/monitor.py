@@ -161,8 +161,14 @@ def main():
         if classification == 'open':
             try:
                 send_discord(webhook, number)
-            except (HTTPError, URLError, TimeoutError, UnicodeError, ValueError, RuntimeError, OSError):
-                print(f'Page check {index}: Discord delivery failed (verify webhook secret and permissions).', file=sys.stderr)
+            except RuntimeError as exc:
+    print(f'Page check {index}: {exc}', file=sys.stderr)
+    errors = True
+    continue
+except (HTTPError, URLError, TimeoutError, UnicodeError, ValueError, OSError):
+    print(f'Page check {index}: Discord network or delivery error.', file=sys.stderr)
+    errors = True
+    continue
                 errors = True
                 continue
             notified.add(token)
