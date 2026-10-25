@@ -140,25 +140,38 @@ def main():
     notified = set(STATE_PATH.read_text().splitlines()) if STATE_PATH.exists() else set()
     changed = False
     errors = False
-    for number in numbers:
+    for index, number in enumerate(numbers, 1):
         token = state_token(number, key)
         if token in notified:
             continue
         try:
             classification = classify(request_page(number), number)
-            if classification == 'open':
-                send_discord(webhook, number)
-                notified.add(token)
-                changed = True
-                print('A newly published page was detected and a private Discord alert was sent.')
-            elif classification == 'pending':
-                print('A monitored page is still pending.')
-            else:
-                print('Unable to confirm a published page; no notification sent.')
-        except (HTTPError, URLError, TimeoutError, UnicodeError, ValueError, RuntimeError, OSError):
-            # Do not include exception strings: request errors may include the page URL.
-            print('A page check or Discord delivery failed; details withheld from public logs.', file=sys.stderr)
+        except HTTPError as exc:
+            print(f'Page check {index}: website HTTP {exc.code}.', file=sys.stderr)
             errors = True
+            continue
+        except (URLError, TimeoutError):
+            print(f'Page check {index}: website network error or timeout.', file=sys.stderr)
+            errors = True
+            continue
+        except (UnicodeError, ValueError, RuntimeError, OSError):
+            print(f'Page check {index}: website response could not be processed.', file=sys.stderr)
+            errors = True
+            continue
+        if classification == 'open':
+            try:
+                send_discord(webhook, number)
+            except (HTTPError, URLError, TimeoutError, UnicodeError, ValueError, RuntimeError, OSError):
+                print(f'Page check {index}: Discord delivery failed (verify webhook secret and permissions).', file=sys.stderr)
+                errors = True
+                continue
+            notified.add(token)
+            changed = True
+            print('A newly published page was detected and a private Discord alert was sent.')
+        elif classification == 'pending':
+            print('A monitored page is still pending.')
+        else:
+            print('Unable to confirm a published page; no notification sent.')
     if changed:
         STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
         STATE_PATH.write_text('\n'.join(sorted(notified)) + '\n')
